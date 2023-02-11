@@ -1,2 +1,7 @@
-package com.fastcampus.snsproject.model.entity;public enum UserRole {
+package com.fastcampus.snsproject.model;
+
+public enum UserRole {
+
+    ADMIN,
+    USER
 }
