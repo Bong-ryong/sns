@@ -2,48 +2,71 @@ package com.fastcampus.snsproject.service;
 
 import com.fastcampus.snsproject.exception.ErrorCode;
 import com.fastcampus.snsproject.exception.SnsApplicationException;
+import com.fastcampus.snsproject.model.Alarm;
 import com.fastcampus.snsproject.model.User;
 import com.fastcampus.snsproject.model.entity.UserEntity;
+import com.fastcampus.snsproject.repository.AlarmEntityRepository;
 import com.fastcampus.snsproject.repository.UserEntityRepository;
+import com.fastcampus.snsproject.repository.UserCacheRepository;
+import com.fastcampus.snsproject.utils.JwtTokenUtils;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
-
-import java.util.Optional;
+import org.springframework.transaction.annotation.Transactional;
 
 @Service
 @RequiredArgsConstructor
 public class UserService {
 
-    private final UserEntityRepository userEntityRepository;
+    private final UserEntityRepository userRepository;
+    private final AlarmEntityRepository alarmEntityRepository;
     private final BCryptPasswordEncoder encoder;
-    //TODO : implement
+    private final UserCacheRepository redisRepository;
+
+
+
+    @Value("${jwt.secret-key}")
+    private String secretKey;
+
+    @Value("${jwt.token.expired-time-ms}")
+    private Long expiredTimeMs;
+
+
+    public User loadUserByUsername(String userName) throws UsernameNotFoundException {
+        return redisRepository.getUser(userName).orElseGet(
+                () -> userRepository.findByUserName(userName).map(User::fromEntity).orElseThrow(
+                        () -> new SnsApplicationException(ErrorCode.USER_NOT_FOUND, String.format("userName is %s", userName))
+                ));
+    }
+
+    public String login(String userName, String password) {
+        User savedUser = loadUserByUsername(userName);
+        redisRepository.setUser(savedUser);
+        if (!encoder.matches(password, savedUser.getPassword())) {
+            throw new SnsApplicationException(ErrorCode.INVALID_PASSWORD);
+        }
+        return JwtTokenUtils.generateAccessToken(userName, secretKey, expiredTimeMs);
+    }
+
+
+    @Transactional
     public User join(String userName, String password) {
-        // 회원가입하려는 userName으로 회원가입된 user가 있는지
-        userEntityRepository.findByUserName(userName).ifPresent(it -> {
-            throw new SnsApplicationException(ErrorCode.DUPLICATED_USER_NAME, String.format("$s is duplicated",userName));
+        // check the userId not exist
+        userRepository.findByUserName(userName).ifPresent(it -> {
+            throw new SnsApplicationException(ErrorCode.DUPLICATED_USER_NAME, String.format("userName is %s", userName));
         });
 
-        // 회원가입 진행 = user를 등록
-        UserEntity userEntity = userEntityRepository.save(UserEntity.of(userName, encoder.encode(password)));
-
-        return User.fromEntity(userEntity);
-
+        UserEntity savedUser = userRepository.save(UserEntity.of(userName, encoder.encode(password)));
+        return User.fromEntity(savedUser);
     }
 
-    // TODO : implement
-    public String login(String userName, String password) {
-
-        //회원가입 여부 체크
-        UserEntity userEntity = userEntityRepository.findByUserName(userName).orElseThrow(() -> new SnsApplicationException(ErrorCode.DUPLICATED_USER_NAME, ""));
-
-        // 비밀번호 체크
-        if(!userEntity.getPassword().equals(password)){
-            throw new SnsApplicationException(ErrorCode.DUPLICATED_USER_NAME, "");
-        }
-
-        // 토큰 생성
-
-        return "";
+    @Transactional
+    public Page<Alarm> alarmList(Integer userId, Pageable pageable) {
+        return alarmEntityRepository.findAllByUserId(userId, pageable).map(Alarm::fromEntity);
     }
+
 }

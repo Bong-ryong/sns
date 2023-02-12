@@ -14,7 +14,6 @@ spring.datasource:
   platform: postgres
   driver-class-name: org.postgresql.Driver
 
-
 spring.jpa:
   database: postgresql
   hibernate.dialect: org.hibernate.dialect.PostgreSQLDialect
@@ -52,3 +51,5 @@ spring:
       properties.enable.idempotence: false
     topic:
       notification: r2rj2fh0-notification
+
+spring.main.allow-bean-definition-overriding: true
